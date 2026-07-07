@@ -1,0 +1,24 @@
+<?php
+// /local/filpass/lang/en/local_filpass.php
+$string['pluginname'] = 'FilPass Integration Suite';
+$string['course_settings_title'] = 'FilPass Course Connection';
+$string['batch_configuration'] = 'Batch Mapping Context';
+$string['select_or_create'] = '--- Select Active FilPass Track Destination ---';
+$string['mapped_batch'] = 'Associated Target Batch Group';
+$string['debugging_suite'] = 'FilPass Sandbox Diagnostic Center';
+$string['temp_location'] = 'Files Temporarily Stored in:';
+$string['upload_test_doc'] = 'Upload Test Verification File';
+$string['trigger_debug_send'] = 'Execute Sample Endpoint Bulk Dispatch';
+$string['debug_success_msg'] = 'Debug Test Package successfully processed via FilPass API Channels.';
+$string['debug_failed_msg'] = 'API transaction anomaly detected during debug batch creation. Inspect log traces.';
+$string['settings_saved'] = 'Course connection references committed successfully.';
+$string['api_server'] = 'API Server Address';
+$string['api_server_desc'] = 'Target absolute base domain endpoint matching your FilPass configurations.';
+$string['api_key'] = 'Client Access Key ID';
+$string['api_key_desc'] = 'Unique identifier credential token.';
+$string['api_secret'] = 'Secret Signature Access Passphrase';
+$string['api_secret_desc'] = 'Private cryptographic pairing identifier keys.';
+$string['debug_form_fields'] = 'Issuance Data Fields for FilPass';
+$string['debug_first_name'] = 'First Name';
+$string['debug_last_name'] = 'Last Name';
+$string['debug_email'] = 'Email Address';
