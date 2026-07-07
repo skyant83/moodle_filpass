@@ -72,7 +72,6 @@ function local_filpass_extend_navigation(global_navigation $navigation) {
     }
 
     $courseid = $PAGE->course->id;
-    $batch_id = get_config('local_filpass', 'course_' . $courseid . '_batch_id');
 
     // The notice is shown only when the course has explicitly enabled the integration.
     // This keeps the UI quiet on pages that are not part of the FilPass workflow.
@@ -80,23 +79,6 @@ function local_filpass_extend_navigation(global_navigation $navigation) {
     if (!$is_enabled) {
         return; // Silent exit—show absolutely nothing on the page layout
     }
-
-    // The notice content changes depending on whether a batch has been mapped. This gives
-    // instructors a quick visual cue about whether the course is ready for issuance or needs attention.
-    if ($batch_id) {
-        $title = 'FilPass Secure Issuance Enabled';
-        $text = 'Test Text';
-        $bootstrap_class = 'alert-info';
-    } else {
-        $title = 'FilPass Tracking Warning';
-        $text = 'Test Text2';
-        $bootstrap_class = 'alert-warning';
-    }
-
-    // The message text is escaped before it is embedded into JavaScript so the injected
-    // notice remains safe to render inside the browser page context.
-    $title_js = addslashes($title);
-    $text_js = addslashes($text);
 
     // The UI update is performed client-side with a small JavaScript snippet so the notice
     // can be injected after the page has rendered without altering the server-side layout logic.
@@ -109,11 +91,23 @@ function local_filpass_extend_navigation(global_navigation $navigation) {
                 }
 
                 // The notice markup is assembled here so the injected alert can be styled consistently.
-                var noticeHtml = '<div class=\"local-filpass-view-notice m-b-1\">' +
-                    '<div class=\"alert {$bootstrap_class}\" role=\"alert\">' +
-                    '<strong>' + '{$title_js}: ' + '</strong>' + '{$text_js}' +
-                    '</div>' +
-                    '</div>';
+                var noticeHtml = ' \
+                    <div class=\"local-filpass-view-notice style=\"background-color: #e1f5fe; border-left: 4px solid #0288d1; padding: 15px; margin-bottom: 20px; border-radius: 4px;\"> \
+                        <h3 style=\"color: #01579b; margin-top: 0;\">📥 Important Notice: Your Certificate Delivery</h3> \
+                        <p>Upon generating your certificate, <strong>two separate emails</strong> will be dispatched to your registered inbox to ensure both immediate access and long-term verification security:</p> \
+                        <ul style=\"margin-bottom: 15px; padding-left: 20px;\"> \
+                            <li style=\"margin-bottom: 8px;\"> \
+                                <strong>Email 1: Secure Verification Copy (From FilPass)</strong><br> \
+                                This contains a cryptographic, tamper-proof copy of your certificate securely synchronized with their tracking systems. It includes an official verification link that potential employers or institutions can use to instantly authenticate your credentials. This email will also provide a secure activation link allowing you to create a free FilPass account to access, manage, and share your digital badges at any time from their portal. \
+                            </li> \
+                            <li> \
+                                <strong>Email 2: Base Reference Copy (From UpSkillNow)</strong><br> \
+                                This contains your direct, standard certificate document sent from our local platform. Please note that this file is intended for personal reference and printing only, and <em>cannot</em> be verified through the external FilPass cryptographic security systems. \
+                            </li> \
+                        </ul> \
+                        <p style=\"font-size: 13px; color: #555555; margin-bottom: 0; font-style: italic;\"><strong>Tip:</strong> If you do not see both messages within a few minutes of generation, please check your Spam or Junk Mail folders to ensure the institutional delivery was not flagged by your email provider.</p> \
+                    </div> \
+                ';
 
                 // The notice is placed just above the certificate action button when that button exists.
                 var \$targetButton = $('.singlebutton').first();

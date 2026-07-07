@@ -29,7 +29,7 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-
+/** @var bool $hassiteconfig */
 if ($hassiteconfig) {
     $settings = new admin_settingpage('local_filpass_settings', get_string('pluginname', 'local_filpass'));
 
@@ -58,6 +58,6 @@ if ($hassiteconfig) {
         ''
     ));
 
-
+    /** @var admin_root $ADMIN */
     $ADMIN->add('localplugins', $settings);
 }

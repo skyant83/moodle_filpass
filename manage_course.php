@@ -32,6 +32,7 @@ require_once($CFG->dirroot . '/local/filpass/edit_form.php');
 
 $courseid = required_param('id', PARAM_INT);
 
+/** @var moodle_database $DB */
 $course = $DB->get_record('course', ['id' => $courseid], '*', MUST_EXIST);
 
 // The page is protected at both the authentication and authorization levels so only
@@ -39,9 +40,10 @@ $course = $DB->get_record('course', ['id' => $courseid], '*', MUST_EXIST);
 require_login($course);
 $context = context_course::instance($courseid);
 
+/** @var context $context */
 require_capability('moodle/course:update', $context);
 
-
+/** @var moodle_page $PAGE */
 $PAGE->set_url(new moodle_url('/local/filpass/manage_course.php', ['id' => $courseid]));
 $PAGE->set_title(get_string('course_settings_title', 'local_filpass'));
 $PAGE->set_heading($course->fullname);
@@ -181,7 +183,7 @@ if ($form->is_cancelled()) {
 	}
 }
 
-
+/** @var core_renderer $OUTPUT */
 echo $OUTPUT->header();
 $form->display();
 echo $OUTPUT->footer();
