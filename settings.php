@@ -58,6 +58,55 @@ if ($hassiteconfig) {
         ''
     ));
 
+    $test_connection_html =
+    html_writer::start_div('mt-3', [
+        'id' => 'local-filpass-connection-test',
+    ]) .
+
+    html_writer::tag(
+        'button',
+        get_string('testconnection', 'local_filpass'),
+        [
+            'type' => 'button',
+            'id' => 'local-filpass-test-button',
+            'class' => 'btn btn-secondary',
+        ]
+    ) .
+
+    html_writer::start_div('mt-3') .
+
+    html_writer::tag(
+        'label',
+        get_string('connectionresponse', 'local_filpass'),
+        [
+            'for' => 'local-filpass-test-output',
+        ]
+    ) .
+
+    html_writer::tag(
+        'textarea',
+        '',
+        [
+            'id' => 'local-filpass-test-output',
+            'class' => 'form-control',
+            'rows' => '10',
+            'readonly' => 'readonly',
+            'aria-live' => 'polite',
+        ]
+    ) .
+
+    html_writer::end_div() .
+    html_writer::end_div();
+
+    $settings->add(new admin_setting_heading(
+        'local_filpass/testconnectionsection',
+        get_string('testconnection', 'local_filpass'),
+        $test_connection_html
+    ));
+
+    /** @var moodle_page $PAGE */
+    $PAGE->requires->js_call_amd('local_filpass/test_connection', 'init');
+
     /** @var admin_root $ADMIN */
     $ADMIN->add('localplugins', $settings);
 }

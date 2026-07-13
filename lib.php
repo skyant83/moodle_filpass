@@ -63,7 +63,8 @@ function local_filpass_extend_navigation_course($navigation, $course, $context) 
  * @return void
  */
 function local_filpass_extend_navigation(global_navigation $navigation) {
-    global $PAGE;
+    /** @var moodle_page $PAGE */
+    global $PAGE, $USER;
 
     // This hook is intentionally scoped to the custom certificate view page so the plugin
     // does not affect unrelated Moodle pages or inject UI elements where they are not needed.
@@ -98,14 +99,15 @@ function local_filpass_extend_navigation(global_navigation $navigation) {
                         <ul style=\"margin-bottom: 15px; padding-left: 20px;\"> \
                             <li style=\"margin-bottom: 8px;\"> \
                                 <strong>Email 1: Secure Verification Copy (From FilPass)</strong><br> \
-                                This contains a cryptographic, tamper-proof copy of your certificate securely synchronized with their tracking systems. It includes an official verification link that potential employers or institutions can use to instantly authenticate your credentials. This email will also provide a secure activation link allowing you to create a free FilPass account to access, manage, and share your digital badges at any time from their portal. \
+                                This contains a cryptographic, tamper-proof copy of your certificate securely and automatically synchronized with their tracking systems. It includes an official verification link that potential employers or institutions can use to instantly authenticate your credentials. This email will also provide a secure activation link allowing you to create a free FilPass account to access, manage, and share your digital badges at any time from their portal. Please be aware that only this version of the certificate is verifiable through FilPass. \
+                                The email you receive will appear with the subject line: <strong>UpskillNowPH has released your Tamperproof Verifiable Credential, " . fullname($USER) . "</strong>\
                             </li> \
                             <li> \
-                                <strong>Email 2: Base Reference Copy (From UpSkillNow)</strong><br> \
+                                <strong>Email 2: Base Reference Copy (From UpSkillNowPH)</strong><br> \
                                 This contains your direct, standard certificate document sent from our local platform. Please note that this file is intended for personal reference and printing only, and <em>cannot</em> be verified through the external FilPass cryptographic security systems. \
                             </li> \
                         </ul> \
-                        <p style=\"font-size: 13px; color: #555555; margin-bottom: 0; font-style: italic;\"><strong>Tip:</strong> If you do not see both messages within a few minutes of generation, please check your Spam or Junk Mail folders to ensure the institutional delivery was not flagged by your email provider.</p> \
+                        <p style=\"font-size: 13px; color: #555555; margin-bottom: 0; font-style: italic;\"><strong>Tip:</strong> If you do not see both messages within a few minutes of generation, please check your Spam or Junk Mail folders to ensure the institutional delivery was not flagged by your email provider. Please contact the site admin if the issue persists.</p> \
                     </div> \
                 ';
 

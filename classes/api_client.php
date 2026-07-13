@@ -31,13 +31,16 @@ namespace local_filpass;
 
 defined('MOODLE_INTERNAL') || die();
 
-class api_client {
-    private $server;
-    private $key;
-    private $secret;
-    private $token = null;
+global $CFG;
+require_once($CFG->libdir . '/filelib.php');
 
-	private $post_header;
+class api_client {
+    private string $server;
+    private string $key;
+    private string $secret;
+    private string|null $token = null;
+
+    private array $post_header;
 
     public function __construct() {
         $this->server = rtrim(get_config('local_filpass', 'api_server'), '/');
@@ -45,61 +48,79 @@ class api_client {
         $this->secret = get_config('local_filpass', 'api_secret');
     }
 
-	/**
-	 * Sets the request headers used for authenticated API calls.
-	 *
-	 * @param string $token Optional Bearer token to include in the Authorization header.
-	 * @return array An empty array for compatibility with the surrounding request flow.
-	 */
-	public function setPostHeader($token = '') {
-		$this->post_header = [
-			'accept: application/json',
-			'authorization: Bearer ' . $token
-		];
-		return [];
-	}
+    /**
+     * Sets the request headers used for authenticated API calls.
+     *
+     * @param string $token Optional Bearer token to include in the Authorization header.
+     * @return array An empty array for compatibility with the surrounding request flow.
+     */
+    public function setPostHeader($token = '') {
+        $this->post_header = [
+            'accept: application/json',
+            'authorization: Bearer ' . $token
+        ];
+        return [];
+    }
 
     /**
      * Authenticates against the FilPass issuing authority and caches a Bearer token.
      *
-     * @return string|false The Bearer token on success, otherwise false.
+     * @return api\response\login_response_data|false The Bearer token on success, otherwise false.
      */
-    public function login() {
+    public function login(): api\response\login_response_data|false {
         // Authentication is performed first because every later request depends on the
         // bearer token returned by the issuing authority endpoint.
         $curl = new \curl();
         $url = $this->server . '/v1/issuing-authority/login';
 
-		$headers = [
-			'accept: application/json',
-			'x-api-key: ' . $this->key,
-			'x-api-secret: ' . $this->secret
-		];
 
-		$curl->setHeader($headers);
+        $curl->setHeader([
+            'accept: application/json',
+            'x-api-key: ' . $this->key,
+            'x-api-secret: ' . $this->secret
+        ]);
 
-        $response = $curl->post($url, '');
+        $rawresponse = $curl->post($url, '');
 
-		$errno = $curl->get_errno();
-		// debugging("FilPass login request completed with curl error code {$errno}.", DEBUG_DEVELOPER);
-		if ($errno != 0) {
-			// debugging("FilPass login request failed. Curl error: {$curl->error} (code {$errno}). Headers: " . print_r($headers, true), DEBUG_DEVELOPER);
-			// debugging("FilPass login failed. Raw response: " . $response, DEBUG_DEVELOPER);
-			// debugging("FilPass API Request Headers: " . print_r($headers, true), DEBUG_DEVELOPER);
-		} else {
-			$response_data = json_decode($response);
-			// debugging("FilPass login response payload: " . print_r($response_data, true), DEBUG_DEVELOPER);
-			// debugging("FilPass login returned bearer token: " . ($response_data->data->token ?? '[empty]'), DEBUG_DEVELOPER);
-			if ($response_data->data->token !== null) {
-				// The bearer token is cached once the login response contains a usable token value.
-				// debugging("FilPass login token cached successfully.", DEBUG_DEVELOPER);
-				$this->setPostHeader($response_data->data->token);
-				$this->token = $response_data->data->token;
-				return $this->token;
-			}
-		}
+        if ($curl->get_errno() !== 0) {
+            debugging(
+                'FilPass login cURL error: ' . $curl->error,
+                DEBUG_DEVELOPER
+            );
 
-        return false;
+            return false;
+        }
+
+        try {
+            $response = api\response\login_response_data::from_json($rawresponse);
+        } catch (\invalid_parameter_exception $exception) {
+            debugging(
+                'Invalid FilPass login response: ' . $exception->getMessage(),
+                DEBUG_DEVELOPER
+            );
+
+            return false;
+        }
+
+        if (!$response->is_success()) {
+            debugging(
+                sprintf(
+                    'FilPass login failed. Code: %d. Message: %s',
+                    $response->get_code(),
+                    $response->get_message()
+                ),
+                DEBUG_DEVELOPER
+            );
+
+            return false;
+        }
+
+        $token = $response->get_token();
+
+        $this->setPostHeader($token);
+        $this->token = $token;
+
+        return $response;
     }
 
     /**
@@ -111,21 +132,21 @@ class api_client {
      */
     public function get_batches($page = 1, $limit = 200) {
         // The batch list is fetched only after a valid session token exists.
-        if (!$this->token && !$this->login()) return [];
-		// debugging("FilPass batch list request succeeded for page {$page} with limit {$limit}.", DEBUG_DEVELOPER);
+        if (!$this->token && !$this->login()->get_token()) return [];
+        // debugging("FilPass batch list request succeeded for page {$page} with limit {$limit}.", DEBUG_DEVELOPER);
 
         $curl = new \curl();
         $url = $this->server . "/batch/list?page={$page}&limit={$limit}&archived=false";
 
-		$curl->setHeader($this->post_header);
+        $curl->setHeader($this->post_header);
         $response = $curl->get($url);
 
 
-		$raw_data = json_decode($response);
-		if ($raw_data && $raw_data->status !== 'error') {
-			return $raw_data->data->documents ?? [];
-		}
-		return [];
+        $raw_data = json_decode($response);
+        if ($raw_data && $raw_data->status !== 'error') {
+            return $raw_data->data->documents ?? [];
+        }
+        return [];
     }
 
     /**
@@ -142,36 +163,36 @@ class api_client {
     public function upload_bulk_data($batch_id, $firstname, $lastname, $email, $file_path, $file_name) {
         // The upload method assumes the session token is already available, because the
         // certificate submission request must be authenticated against the same FilPass account.
-        if (!$this->token && !$this->login()) return false;
+        if (!$this->token && !$this->login()->get_token()) return false;
 
         $curl = new \curl();
         $url = $this->server . '/batch/create-bulk-issuance-data';
 
-		$curl->setHeader($this->post_header);
+        $curl->setHeader($this->post_header);
 
         // The payload is sent as a single-item array because the API expects one record per
         // recipient while still allowing the document file to be attached in the same request.
         $parsedDataArray = [
-			[
-				'uploadedFileLink' => $file_name,
-				'email' => $email,
-				'firstName'=> $firstname,
-				'lastName'=> $lastname,
-				'issuedOn' => date('Y M d'),
-			]
-		];
+            [
+                'uploadedFileLink' => $file_name,
+                'email' => $email,
+                'firstName'=> $firstname,
+                'lastName'=> $lastname,
+                'issuedOn' => date('Y M d'),
+            ]
+        ];
 
 
-		$params = [
-			'batchNumber' => $batch_id,
-			'parsedData' => json_encode($parsedDataArray),
-			'uploadedDocs' => curl_file_create($file_path, mime_content_type($file_path), $file_name),
-		];
+        $params = [
+            'batchNumber' => $batch_id,
+            'parsedData' => json_encode($parsedDataArray),
+            'uploadedDocs' => curl_file_create($file_path, mime_content_type($file_path), $file_name),
+        ];
 
-		// The request details are logged here so a failing upload can be traced back to the
-		// payload structure and file path used for the submission.
-		// debugging('FilPass upload payload prepared: ' . print_r($params, true), DEBUG_DEVELOPER);
-		// debugging('FilPass upload temporary file path: ' . $file_path, DEBUG_DEVELOPER);
+        // The request details are logged here so a failing upload can be traced back to the
+        // payload structure and file path used for the submission.
+        // debugging('FilPass upload payload prepared: ' . print_r($params, true), DEBUG_DEVELOPER);
+        // debugging('FilPass upload temporary file path: ' . $file_path, DEBUG_DEVELOPER);
 
         $response = $curl->post($url, $params);
         return json_decode($response);

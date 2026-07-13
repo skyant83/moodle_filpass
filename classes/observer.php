@@ -61,8 +61,6 @@ class observer {
         // 1. Fetch Student Profile Core Elements
         $user = $DB->get_record('user', ['id' => $userid], 'id, firstname, lastname, email', MUST_EXIST);
 
-
-
         // 2. Fetch the corresponding customcert activity instance record
         $issue_record = $DB->get_record('customcert_issues', ['id' => $eventdata['objectid']], '*', MUST_EXIST);
         $customcert = $DB->get_record('customcert', ['id' => $issue_record->customcertid], '*', MUST_EXIST);
