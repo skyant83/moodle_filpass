@@ -93,7 +93,6 @@ function local_filpass_extend_navigation(global_navigation $navigation) {
         return; // Silent exit—show absolutely nothing on the page layout
     }
 
-    debugging('entereed ehre', DEBUG_DEVELOPER);
     // The UI update is performed client-side with a small JavaScript snippet so the notice
     // can be injected after the page has rendered without altering the server-side layout logic.
     $js_code = "
