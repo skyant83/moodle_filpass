@@ -26,6 +26,8 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+use core\check\performance\debugging;
+
 // /local/filpass/lib.php
 
 defined('MOODLE_INTERNAL') || die();
@@ -41,7 +43,7 @@ defined('MOODLE_INTERNAL') || die();
 function local_filpass_extend_navigation_course($navigation, $course, $context) {
     // Only course managers should be able to change FilPass settings, so the link is
     // gated behind the same capability used for course administration.
-    if (has_capability('moodle/course:update', $context)) {
+    if (has_capability('moodle/course:visibility', $context)) {
         $url = new moodle_url('/local/filpass/manage_course.php', ['id' => $course->id]);
         $navigation->add(
             get_string('course_settings_title', 'local_filpass'),
@@ -73,6 +75,16 @@ function local_filpass_extend_navigation(global_navigation $navigation) {
     }
 
     $courseid = $PAGE->course->id;
+    $first_name = $USER->firstname;
+
+    $context = context_course::instance($courseid);
+
+    /** @var context $context */
+    if (has_capability('mod/customcert:addinstance', $context)) {
+        $first_name = "[User's Firstname will appear here]";
+    }
+
+    $first_name = addslashes($first_name);
 
     // The notice is shown only when the course has explicitly enabled the integration.
     // This keeps the UI quiet on pages that are not part of the FilPass workflow.
@@ -81,6 +93,7 @@ function local_filpass_extend_navigation(global_navigation $navigation) {
         return; // Silent exit—show absolutely nothing on the page layout
     }
 
+    debugging('entereed ehre', DEBUG_DEVELOPER);
     // The UI update is performed client-side with a small JavaScript snippet so the notice
     // can be injected after the page has rendered without altering the server-side layout logic.
     $js_code = "
@@ -100,7 +113,7 @@ function local_filpass_extend_navigation(global_navigation $navigation) {
                             <li style=\"margin-bottom: 8px;\"> \
                                 <strong>Email 1: Secure Verification Copy (From FilPass)</strong><br> \
                                 This contains a cryptographic, tamper-proof copy of your certificate securely and automatically synchronized with their tracking systems. It includes an official verification link that potential employers or institutions can use to instantly authenticate your credentials. This email will also provide a secure activation link allowing you to create a free FilPass account to access, manage, and share your digital badges at any time from their portal. Please be aware that only this version of the certificate is verifiable through FilPass. \
-                                The email you receive will appear with the subject line: <strong>UpskillNowPH has released your Tamperproof Verifiable Credential, " . fullname($USER) . "</strong>\
+                                The email you receive will appear with the subject line: \"<strong>UpskillNowPH has released your Tamperproof Verifiable Credential, " . $first_name . "</strong>\"\
                             </li> \
                             <li> \
                                 <strong>Email 2: Base Reference Copy (From UpSkillNowPH)</strong><br> \

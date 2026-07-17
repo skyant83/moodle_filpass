@@ -15,28 +15,26 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Declares the Moodle event observer used to process certificate issuance events.
+ * Scheduled task definitions for FilPass Integration Suite
+ *
+ * Documentation: {@link https://moodledev.io/docs/apis/subsystems/task/scheduled}
  *
  * @package    local_filpass
+ * @category   task
  * @copyright  2026 Enrique Badiola <enrique.badiola83@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-// /local/filpass/db/events.php
-
 defined('MOODLE_INTERNAL') || die();
 
-// Moodle registers the plugin callback here so certificate issuance events are handled
-// automatically whenever the custom certificate module raises an issue_created event.
-$observers = array(
-    array(
-        'eventname'   => '\mod_customcert\event\issue_created',
-        'callback'    => '\local_filpass\observer::certificate_generated',
-        'priority'    => 500,
-    ),
-    array(
-        'eventname'   => '\mod_customcert\event\issue_deleted',
-        'callback'    => '\local_filpass\observer::certificate_deleted',
-        'priority'    => 500,
-    ),
-);
+$tasks = [
+    [
+        'classname' => 'local_filpass\task\retry_pending_uploads',
+        'blocking' => 0,
+        'minute' => '*/5',
+        'hour' => '*',
+        'day' => '*',
+        'month' => '*',
+        'dayofweek' => '*',
+    ],
+];

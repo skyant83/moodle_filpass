@@ -28,3 +28,4 @@ $string['connectionresponse'] = 'Connection response';
 $string['testingconnection'] = 'Connecting to FilPass...';
 $string['connectionrequestfailed'] = 'The connection request failed.';
 $string['missingconfiguration'] = 'The API server, API key, or API secret has not been configured.';
+$string['task_retry_pending_uploads'] = 'Retry pending FilPass certificate uploads.';

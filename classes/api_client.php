@@ -124,6 +124,21 @@ class api_client {
     }
 
     /**
+     * Ensures the client has a valid bearer token.
+     *
+     * @return bool
+     */
+    private function ensure_token(): bool {
+        if (!empty($this->token)) {
+            return true;
+        }
+
+        $loginresponse = $this->login();
+
+        return $loginresponse !== false && !empty($this->token);
+    }
+
+    /**
      * Retrieves the list of available FilPass batches from the API.
      *
      * @param int $page The page number to request.
@@ -132,8 +147,10 @@ class api_client {
      */
     public function get_batches($page = 1, $limit = 200) {
         // The batch list is fetched only after a valid session token exists.
-        if (!$this->token && !$this->login()->get_token()) return [];
-        // debugging("FilPass batch list request succeeded for page {$page} with limit {$limit}.", DEBUG_DEVELOPER);
+
+        if (!$this->ensure_token()) {
+            return [];
+        }
 
         $curl = new \curl();
         $url = $this->server . "/batch/list?page={$page}&limit={$limit}&archived=false";
@@ -144,6 +161,7 @@ class api_client {
 
         $raw_data = json_decode($response);
         if ($raw_data && $raw_data->status !== 'error') {
+            // debugging("FilPass batch list request succeeded for page {$page} with limit {$limit}.", DEBUG_DEVELOPER);
             return $raw_data->data->documents ?? [];
         }
         return [];
@@ -163,7 +181,7 @@ class api_client {
     public function upload_bulk_data($batch_id, $firstname, $lastname, $email, $file_path, $file_name) {
         // The upload method assumes the session token is already available, because the
         // certificate submission request must be authenticated against the same FilPass account.
-        if (!$this->token && !$this->login()->get_token()) return false;
+        if (!$this->ensure_token()) { return false; }
 
         $curl = new \curl();
         $url = $this->server . '/batch/create-bulk-issuance-data';

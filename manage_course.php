@@ -54,8 +54,19 @@ $client = new \local_filpass\api_client();
 $batches = $client->get_batches();
 // debugging("FilPass course page loaded available batches: " . print_r($batches, true), DEBUG_DEVELOPER);
 
-$current_enabled = get_config('local_filpass', 'course_' . $courseid . '_enabled') ?? 0;
-$current_batch = get_config('local_filpass', 'course_' . $courseid . '_batch_id') ?: '';
+$course_filpass_config = $DB->get_record(
+    'local_filpass_courses',
+    ['courseid' => $courseid]
+);
+
+if ($course_filpass_config) {
+    $current_enabled = (int) $course_filpass_config->enabled;
+    $current_batch = $course_filpass_config->batchid;
+} else {
+    // Temporary fallback for pre-database course settings.
+    $current_enabled = get_config('local_filpass', 'course_' . $courseid . '_enabled') ?? 0;
+    $current_batch = get_config('local_filpass', 'course_' . $courseid . '_batch_id') ?: '';
+}
 
 // The form is pre-populated from the saved course-level configuration so the page reflects
 // the current state before a developer or manager makes any changes.
@@ -154,7 +165,38 @@ if ($form->is_cancelled()) {
 		// whenever a certificate is issued for this course.
 		// debugging('FilPass course settings form submission data: ' . print_r($data, true), DEBUG_DEVELOPER);
 
-		set_config('course_' . $courseid . '_enabled', $data->enable_filpass, 'local_filpass');
+		$enabled = !empty($data->enable_filpass) ? 1 : 0;
+		$batchid = $enabled ? ($data->filpass_batch_id ?? '') : '';
+		$now = time();
+
+		$existing = $DB->get_record(
+			'local_filpass_courses',
+			['courseid' => $courseid]
+		);
+
+		global $USER;
+		if ($existing) {
+			$existing->enabled = $enabled;
+			$existing->batchid = $batchid;
+			$existing->timemodified = $now;
+			$existing->usermodified = $USER->id;
+
+			$DB->update_record('local_filpass_courses', $existing);
+		} else {
+			$DB->insert_record('local_filpass_courses', (object) [
+				'courseid' => $courseid,
+				'enabled' => $enabled,
+				'batchid' => $batchid,
+				'timecreated' => $now,
+				'timemodified' => $now,
+				'usermodified' => $USER->id,
+			]);
+		}
+
+		// Temporary compatibility with old config-based code.
+		// You can remove this later once everything reads from local_filpass_courses.
+		set_config('course_' . $courseid . '_enabled', $enabled, 'local_filpass');
+		set_config('course_' . $courseid . '_batch_id', $batchid, 'local_filpass');
 
 		try {
 			/** @var stdClass $USER */
@@ -168,11 +210,6 @@ if ($form->is_cancelled()) {
 			error_log('FilPass course settings change event warning: ' . $e->getMessage());
 		}
 
-		if ($data->enable_filpass) {
-			set_config('course_' . $courseid . '_batch_id', $data->filpass_batch_id, 'local_filpass');
-		} else {
-			set_config('course_' . $courseid . '_batch_id', '', 'local_filpass');
-		}
 
 
 		redirect(
