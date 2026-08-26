@@ -42,9 +42,34 @@ class api_client {
 
     private array $post_header;
 
-    public function __construct() {
+    public function __construct(int $presetid = 0) {
+        if ($presetid > 0) {
+            $credentials = \local_filpass\service\preset_service::get_credentials($presetid);
+
+            if (!$credentials) {
+                throw new \moodle_exception('presetnotfound', 'local_filpass');
+            }
+
+            $this->server = $credentials->server;
+            $this->key = $credentials->key;
+            $this->secret = $credentials->secret;
+            return;
+        }
+
+        $activepresetid = (int) get_config('local_filpass', 'activepresetid');
+        if ($activepresetid > 0) {
+            $credentials = \local_filpass\service\preset_service::get_credentials($activepresetid);
+
+            if ($credentials) {
+                $this->server = $credentials->server;
+                $this->key = $credentials->key;
+                $this->secret = $credentials->secret;
+                return;
+            }
+        }
+
         $this->server = rtrim(get_config('local_filpass', 'api_server'), '/');
-        $this->key    = get_config('local_filpass', 'api_key');
+        $this->key = get_config('local_filpass', 'api_key');
         $this->secret = get_config('local_filpass', 'api_secret');
     }
 

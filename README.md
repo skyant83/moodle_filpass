@@ -8,6 +8,8 @@ This local Moodle plugin connects the custom certificate workflow to the FilPass
 - Adds a course-level settings page where course managers can enable or disable the integration.
 - Stores the FilPass API endpoint and authentication credentials in Moodle site administration.
 - Allows each course to be mapped to a specific FilPass batch.
+- Lets administrators save named API presets for separate environments, such as testing and production.
+- Lets a course use the site-wide API preset or select its own saved API preset.
 - Stores course-level FilPass enablement and batch mappings in dedicated plugin database records.
 - Hooks into the custom certificate issue event so certificate issuance can trigger an external upload automatically.
 - Generates the certificate PDF from the active custom certificate template and sends it to FilPass with recipient data.
@@ -97,6 +99,7 @@ local/
 - [classes/event/admin_settings_changed.php](classes/event/admin_settings_changed.php) defines the event raised when site-level settings are updated.
 - [classes/event/course_settings_changed.php](classes/event/course_settings_changed.php) defines the event raised when course-level settings are updated.
 - [classes/service/upload_service.php](classes/service/upload_service.php) centralizes the certificate upload workflow used by the event observer, retry task, and manual action. It creates upload records, generates PDFs, sends data to FilPass, records success or failure, manages per-entry automatic retry control, skips privileged certificate recipients, and triggers upload lifecycle events.
+- [classes/service/preset_service.php](classes/service/preset_service.php) manages encrypted API presets, the site-wide default, and course-level preset options.
 - [classes/task/retry_pending_uploads.php](classes/task/retry_pending_uploads.php) defines the scheduled task that checks issued certificates in FilPass-enabled courses and retries eligible uploads that are missing, pending, or failed.
 - [classes/admin_setting_password.php](classes/admin_setting_password.php) defines the custom admin password setting used to store sensitive FilPass credentials while supporting change detection for settings events.
 - [classes/admin_setting_text.php](classes/admin_setting_text.php) defines the custom admin text setting used for FilPass configuration values while supporting change detection for settings events.
@@ -110,6 +113,7 @@ local/
 - [edit_form.php](edit_form.php) defines the Moodle form used to configure the integration and the debug test fields.
 - [lib.php](lib.php) adds the course configuration link in navigation and injects a small notice on the certificate view page when FilPass is active for the course.
 - [manage_course.php](manage_course.php) handles the course-level administration UI, including saving course enablement and batch mappings, listing pending and failed certificate entries, and running manual uploads that stop automatic retry for the selected entry.
+- [manage_presets.php](manage_presets.php) provides the site-administration page for creating, editing, activating, and safely deleting API presets.
 - [settings.php](settings.php) stores the FilPass base URL, API key, and API secret in site-wide configuration and emits a settings-change event when those values are saved. Includes a section to test login credentials.
 - [styles.css](styles.css) contains plugin-specific styling for the FilPass course settings, debug interface, notices, and admin UI elements.
 - [test_connection.php](test_connection.php) provides the protected AJAX endpoint used by the site administration connection-test button. It validates the Moodle session, calls the FilPass login flow, and returns a safe JSON response with the token redacted.

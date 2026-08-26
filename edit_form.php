@@ -37,6 +37,8 @@ class local_filpass_course_form extends moodleform {
         $mform = $this->_form;
         $batches = $this->_customdata['batches'];
 
+        $presetoptions = $this->_customdata['presetoptions'];
+
         $courseid = $this->_customdata['courseid'];
         $mform->addElement('hidden', 'id', $courseid);
         $mform->setType('id', PARAM_INT);
@@ -48,6 +50,17 @@ class local_filpass_course_form extends moodleform {
         $mform->addElement('advcheckbox', 'enable_filpass', 'Enable FilPass Integration', '', null, [0, 1]);
         $mform->setType('enable_filpass', PARAM_INT);
         $mform->setDefault('enable_filpass', 0);
+
+        $mform->addElement(
+            'select',
+            'filpass_presetid',
+            get_string('coursepreset', 'local_filpass'),
+            $presetoptions
+        );
+        $mform->setType('filpass_presetid', PARAM_INT);
+        $mform->hideIf('filpass_presetid', 'enable_filpass', 'eq', 0);
+        $mform->addElement('static', 'presethelp', '', get_string('coursepresetdesc', 'local_filpass'));
+        $mform->hideIf('presethelp', 'enable_filpass', 'eq', 0);
 
         $options = ['' => get_string('select_or_create', 'local_filpass')];
         foreach ($batches as $batch) {

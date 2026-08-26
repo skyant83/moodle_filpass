@@ -263,7 +263,7 @@ class upload_service {
 
             file_put_contents($temppath, $pdfbinarydata);
 
-            $client = new \local_filpass\api_client();
+            $client = new \local_filpass\api_client((int) ($courseconfig->presetid ?? 0));
 
             $response = $client->upload_bulk_data(
                 $courseconfig->batchid,

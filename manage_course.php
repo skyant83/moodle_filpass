@@ -160,12 +160,6 @@ if ($reactivateissueid) {
 	);
 }
 
-// The course page retrieves the available FilPass batches up front so the form can present
-// a valid selection list without requiring the admin to enter batch IDs manually.
-$client = new \local_filpass\api_client();
-$batches = $client->get_batches();
-// debugging("FilPass course page loaded available batches: " . print_r($batches, true), DEBUG_DEVELOPER);
-
 $course_filpass_config = $DB->get_record(
     'local_filpass_courses',
     ['courseid' => $courseid]
@@ -174,22 +168,30 @@ $course_filpass_config = $DB->get_record(
 if ($course_filpass_config) {
     $current_enabled = (int) $course_filpass_config->enabled;
     $current_batch = $course_filpass_config->batchid;
+    $currentpresetid = (int) ($course_filpass_config->presetid ?? 0);
 } else {
     // Temporary fallback for pre-database course settings.
     $current_enabled = get_config('local_filpass', 'course_' . $courseid . '_enabled') ?? 0;
     $current_batch = get_config('local_filpass', 'course_' . $courseid . '_batch_id') ?: '';
+    $currentpresetid = 0;
 }
+
+// Batches are loaded through the course override, falling back to the site-wide active preset.
+$client = new \local_filpass\api_client($currentpresetid);
+$batches = $client->get_batches();
 
 // The form is pre-populated from the saved course-level configuration so the page reflects
 // the current state before a developer or manager makes any changes.
 $form_data = new stdClass();
 $form_data->id = $courseid;
 $form_data->enable_filpass = $current_enabled;
+$form_data->filpass_presetid = $currentpresetid;
 $form_data->filpass_batch_id = $current_batch;
 
 $form = new local_filpass_course_form(null, [
 	'batches' => $batches,
-	'courseid' => $courseid
+	'courseid' => $courseid,
+	'presetoptions' => \local_filpass\service\preset_service::get_preset_options(),
 ]);
 
 $form->set_data($form_data);
@@ -240,7 +242,10 @@ if ($form->is_cancelled()) {
 			// debugging('FilPass debug upload submission data: ' . print_r($data, true), DEBUG_DEVELOPER);
 			// debugging('FilPass debug upload temporary file prepared at ' . $temp_path . ' with filename ' . $file_name . '.', DEBUG_DEVELOPER);
 
-			$result = $client->upload_bulk_data(
+			$debugpresetid = (int) ($data->filpass_presetid ?? 0);
+			$debugclient = new \local_filpass\api_client($debugpresetid);
+
+			$result = $debugclient->upload_bulk_data(
 				$data->filpass_batch_id ?? 'test_batch',
 				$data->first_name ?? 'John (Default)',
 				$data->last_name ?? 'Doe',
@@ -253,10 +258,11 @@ if ($form->is_cancelled()) {
 
 			// debugging('FilPass debug upload API response: ' . print_r($result, true), DEBUG_DEVELOPER);
 
-			if ($result->status === 'success') {
+			if (is_object($result) && ($result->status ?? '') === 'success') {
 				redirect(
 					new moodle_url('/local/filpass/manage_course.php', ['id' => $courseid]),
 					get_string('debug_success_msg', 'local_filpass'),
+					null,
 					\core\output\notification::NOTIFY_SUCCESS
 				);
 			} else {
@@ -278,7 +284,16 @@ if ($form->is_cancelled()) {
 		// debugging('FilPass course settings form submission data: ' . print_r($data, true), DEBUG_DEVELOPER);
 
 		$enabled = !empty($data->enable_filpass) ? 1 : 0;
-		$batchid = $enabled ? ($data->filpass_batch_id ?? '') : '';
+		$presetid = (int) ($data->filpass_presetid ?? 0);
+
+		if ($presetid > 0 && !\local_filpass\service\preset_service::preset_exists($presetid)) {
+			throw new moodle_exception('invalidcoursepreset', 'local_filpass');
+		}
+
+		// A batch ID belongs to one API account. Clear it when the connection changes so a
+		// manager selects a batch from the newly selected preset after the page reloads.
+		$presetchanged = $presetid !== $currentpresetid;
+		$batchid = $enabled && !$presetchanged ? ($data->filpass_batch_id ?? '') : '';
 		$now = time();
 
 		$existing = $DB->get_record(
@@ -290,6 +305,7 @@ if ($form->is_cancelled()) {
 		if ($existing) {
 			$existing->enabled = $enabled;
 			$existing->batchid = $batchid;
+			$existing->presetid = $presetid;
 			$existing->timemodified = $now;
 			$existing->usermodified = $USER->id;
 
@@ -299,6 +315,7 @@ if ($form->is_cancelled()) {
 				'courseid' => $courseid,
 				'enabled' => $enabled,
 				'batchid' => $batchid,
+				'presetid' => $presetid,
 				'timecreated' => $now,
 				'timemodified' => $now,
 				'usermodified' => $USER->id,
@@ -324,9 +341,14 @@ if ($form->is_cancelled()) {
 
 
 
+		$settingsmessage = $presetchanged
+			? get_string('presetchangedselectbatch', 'local_filpass')
+			: get_string('settings_saved', 'local_filpass');
+
 		redirect(
 			new moodle_url('/local/filpass/manage_course.php', ['id' => $courseid]),
-			get_string('settings_saved', 'local_filpass'),
+			$settingsmessage,
+			null,
 			\core\output\notification::NOTIFY_SUCCESS
 		);
 	}

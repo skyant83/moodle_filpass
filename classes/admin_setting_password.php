@@ -27,8 +27,9 @@ defined('MOODLE_INTERNAL') || die();
  */
 class admin_setting_password extends \admin_setting_configpasswordunmask {
     public function write_setting($data) {
+        $oldvalue = $this->get_setting();
         $result = parent::write_setting($data);
-        if ($result === true) {
+        if ($result === '' && $oldvalue !== $this->get_setting()) {
             $this->trigger_admin_settings_event();
         }
         return $result;
@@ -38,6 +39,8 @@ class admin_setting_password extends \admin_setting_configpasswordunmask {
         global $USER;
 
         try {
+            // A direct edit intentionally returns the site to the legacy default connection.
+            delete_config('activepresetid', 'local_filpass');
             $event = \local_filpass\event\admin_settings_changed::create([
                 'userid' => $USER->id,
                 'context' => \context_system::instance(),

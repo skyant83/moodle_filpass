@@ -58,6 +58,16 @@ if ($hassiteconfig) {
         ''
     ));
 
+    $settings->add(new admin_setting_heading(
+        'local_filpass/apipresets',
+        get_string('apipresets', 'local_filpass'),
+        html_writer::link(
+            new moodle_url('/local/filpass/manage_presets.php'),
+            get_string('managepresets', 'local_filpass'),
+            ['class' => 'btn btn-secondary']
+        ) . html_writer::tag('p', get_string('apipresetsdesc', 'local_filpass'), ['class' => 'mt-2'])
+    ));
+
     $test_connection_html =
     html_writer::start_div('mt-3', [
         'id' => 'local-filpass-connection-test',
@@ -109,4 +119,10 @@ if ($hassiteconfig) {
 
     /** @var admin_root $ADMIN */
     $ADMIN->add('localplugins', $settings);
+    $ADMIN->add('localplugins', new admin_externalpage(
+        'local_filpass_presets',
+        get_string('managepresets', 'local_filpass'),
+        new moodle_url('/local/filpass/manage_presets.php'),
+        'moodle/site:config'
+    ));
 }
