@@ -358,6 +358,9 @@ if ($uploadcount === 0) {
 	];
 
 	$integrationready = !empty($current_enabled) && !empty($current_batch);
+	$retrytask = \core\task\manager::get_scheduled_task(
+		\local_filpass\task\retry_pending_uploads::class
+	);
 
 	foreach ($uploadrecords as $uploadrecord) {
 		$status = empty($uploadrecord->uploadid)
@@ -372,14 +375,29 @@ if ($uploadcount === 0) {
 			$retrymode = get_string('autoretrylimitreached', 'local_filpass');
 		} else if (empty($uploadrecord->uploadid) || !empty($uploadrecord->autoretry)) {
 			if (!empty($uploadrecord->nextretry)) {
-				$retrymode = get_string(
-					'autoretryscheduled',
-					'local_filpass',
-					userdate(
-						(int) $uploadrecord->nextretry,
-						get_string('strftimedatetimeaccurate', 'langconfig')
-					)
-				);
+				if ($retrytask && $retrytask->is_enabled()) {
+					$nextretry = (int) $retrytask->get_next_run_time();
+					$retryeligible = (int) $uploadrecord->nextretry;
+
+					if ($nextretry < $retryeligible) {
+						$nextretry = $retrytask->get_next_scheduled_time($retryeligible);
+					}
+
+					$retrystring = $nextretry <= time()
+						? 'autoretryoverdue'
+						: 'autoretryscheduled';
+
+					$retrymode = get_string(
+						$retrystring,
+						'local_filpass',
+						userdate(
+							$nextretry,
+							get_string('strftimedatetimeaccurate', 'langconfig')
+						)
+					);
+				} else {
+					$retrymode = get_string('autoretrytaskdisabled', 'local_filpass');
+				}
 			} else {
 				$retrymode = get_string('autoretryenabled', 'local_filpass');
 			}

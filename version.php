@@ -28,7 +28,7 @@ defined('MOODLE_INTERNAL') || die();
 
 /** @var stdClass $plugin */
 $plugin->component = 'local_filpass';
-$plugin->version   = 2026082601; // YYYYMMDDXX format
+$plugin->version   = 2026082602; // YYYYMMDDXX format
 $plugin->requires  = 2022111800; // Moodle 4.1 or higher
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '1.1.1';
+$plugin->release   = '1.1.2';
