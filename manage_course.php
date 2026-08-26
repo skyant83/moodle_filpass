@@ -375,7 +375,10 @@ if ($uploadcount === 0) {
 				$retrymode = get_string(
 					'autoretryscheduled',
 					'local_filpass',
-					userdate((int) $uploadrecord->nextretry)
+					userdate(
+						(int) $uploadrecord->nextretry,
+						get_string('strftimedatetimeaccurate', 'langconfig')
+					)
 				);
 			} else {
 				$retrymode = get_string('autoretryenabled', 'local_filpass');
