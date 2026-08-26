@@ -49,8 +49,15 @@ $PAGE->set_title(get_string('course_settings_title', 'local_filpass'));
 $PAGE->set_heading($course->fullname);
 
 $manualissueid = optional_param('manualupload', 0, PARAM_INT);
+$reactivateissueid = optional_param('reactivateautoretry', 0, PARAM_INT);
 
-if ($manualissueid) {
+if ($manualissueid && $reactivateissueid) {
+	throw new moodle_exception('invaliduploadaction', 'local_filpass');
+}
+
+$actionissueid = $manualissueid ?: $reactivateissueid;
+
+if ($actionissueid) {
 	require_sesskey();
 
 	$issuebelongs = $DB->record_exists_sql(
@@ -60,7 +67,7 @@ if ($manualissueid) {
 		  WHERE ci.id = :issueid
 		    AND cc.course = :courseid",
 		[
-			'issueid' => $manualissueid,
+			'issueid' => $actionissueid,
 			'courseid' => $courseid,
 		]
 	);
@@ -68,6 +75,9 @@ if ($manualissueid) {
 	if (!$issuebelongs) {
 		throw new moodle_exception('invalidmanualupload', 'local_filpass');
 	}
+}
+
+if ($manualissueid) {
 
 	$uploaded = \local_filpass\service\upload_service::upload_issue(
 		$manualissueid,
@@ -109,6 +119,42 @@ if ($manualissueid) {
 	redirect(
 		$redirecturl,
 		get_string('manualuploadnotstarted', 'local_filpass'),
+		null,
+		\core\output\notification::NOTIFY_WARNING
+	);
+}
+
+if ($reactivateissueid) {
+	$reactivated = \local_filpass\service\upload_service::resume_automatic_retries($reactivateissueid);
+	$uploadrecord = $DB->get_record(
+		'local_filpass_uploads',
+		['issueid' => $reactivateissueid],
+		'*',
+		IGNORE_MISSING
+	);
+	$redirecturl = new moodle_url('/local/filpass/manage_course.php', ['id' => $courseid]);
+
+	if ($reactivated) {
+		redirect(
+			$redirecturl,
+			get_string('autoretryreactivated', 'local_filpass'),
+			null,
+			\core\output\notification::NOTIFY_SUCCESS
+		);
+	}
+
+	if ($uploadrecord && (int) $uploadrecord->attempts >= \local_filpass\service\upload_service::MAX_AUTO_ATTEMPTS) {
+		redirect(
+			$redirecturl,
+			get_string('autoretryreactivationlimit', 'local_filpass'),
+			null,
+			\core\output\notification::NOTIFY_WARNING
+		);
+	}
+
+	redirect(
+		$redirecturl,
+		get_string('autoretryreactivationnotstarted', 'local_filpass'),
 		null,
 		\core\output\notification::NOTIFY_WARNING
 	);
@@ -407,6 +453,7 @@ if ($uploadcount === 0) {
 
 		$action = get_string('integrationnotready', 'local_filpass');
 		if ($integrationready) {
+			$actions = [];
 			$actionurl = new moodle_url('/local/filpass/manage_course.php', [
 				'id' => $courseid,
 				'manualupload' => $uploadrecord->issueid,
@@ -418,7 +465,32 @@ if ($uploadcount === 0) {
 				'post'
 			);
 			$button->add_confirm_action(get_string('manualuploadconfirm', 'local_filpass'));
-			$action = $OUTPUT->render($button);
+			$actions[] = $OUTPUT->render($button);
+
+			if (!empty($uploadrecord->uploadid) && empty($uploadrecord->autoretry)) {
+				if ((int) $uploadrecord->attempts < \local_filpass\service\upload_service::MAX_AUTO_ATTEMPTS) {
+					$reactivateurl = new moodle_url('/local/filpass/manage_course.php', [
+						'id' => $courseid,
+						'reactivateautoretry' => $uploadrecord->issueid,
+						'sesskey' => sesskey(),
+					]);
+					$reactivatebutton = new single_button(
+						$reactivateurl,
+						get_string('resumeautoretry', 'local_filpass'),
+						'post'
+					);
+					$reactivatebutton->add_confirm_action(get_string('resumeautoretryconfirm', 'local_filpass'));
+					$actions[] = $OUTPUT->render($reactivatebutton);
+				} else {
+					$actions[] = html_writer::tag(
+						'div',
+						get_string('autoretryreactivationlimit', 'local_filpass'),
+						['class' => 'text-warning small']
+					);
+				}
+			}
+
+			$action = implode('', $actions);
 		}
 
 		$table->data[] = [

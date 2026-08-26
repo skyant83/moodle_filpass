@@ -69,6 +69,53 @@ class upload_service {
     }
 
     /**
+     * Returns a manually stopped upload to the scheduled retry workflow.
+     *
+     * @param int $issueid
+     * @return bool
+     */
+    public static function resume_automatic_retries(int $issueid): bool {
+        global $DB;
+
+        $lockfactory = \core\lock\lock_config::get_lock_factory('local_filpass');
+        $lock = $lockfactory->get_lock('upload_issue_' . $issueid, 10);
+
+        if (!$lock) {
+            debugging(
+                'FilPass automatic retry could not be resumed because issue is being processed: ' . $issueid,
+                DEBUG_DEVELOPER
+            );
+
+            return false;
+        }
+
+        try {
+            $record = $DB->get_record(
+                'local_filpass_uploads',
+                ['issueid' => $issueid],
+                '*',
+                IGNORE_MISSING
+            );
+
+            if (!$record || !empty($record->autoretry)
+                || in_array($record->status, [self::STATUS_SUCCESS, self::STATUS_SKIPPED], true)
+                || (int) $record->attempts >= self::MAX_AUTO_ATTEMPTS) {
+                return false;
+            }
+
+            // A zero next-retry timestamp makes the entry due for the next scheduled task run.
+            $record->autoretry = 1;
+            $record->nextretry = 0;
+            $record->timemodified = time();
+            $DB->update_record('local_filpass_uploads', $record);
+
+            return true;
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
      * Performs the actual upload once the issue lock has been acquired.
      *
      * @param int $issueid
