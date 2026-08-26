@@ -113,7 +113,7 @@ local/
 - [edit_form.php](edit_form.php) defines the Moodle form used to configure the integration and the debug test fields.
 - [lib.php](lib.php) adds the course configuration link in navigation and injects a small notice on the certificate view page when FilPass is active for the course.
 - [manage_course.php](manage_course.php) handles the course-level administration UI, including saving course enablement and batch mappings, listing pending and failed certificate entries, and running manual uploads that stop automatic retry for the selected entry.
-- [manage_presets.php](manage_presets.php) provides the site-administration page for creating, editing, activating, and safely deleting API presets.
+- [manage_presets.php](manage_presets.php) handles preset apply, save, and delete actions submitted from the FilPass site settings page.
 - [settings.php](settings.php) stores the FilPass base URL, API key, and API secret in site-wide configuration and emits a settings-change event when those values are saved. Includes a section to test login credentials.
 - [styles.css](styles.css) contains plugin-specific styling for the FilPass course settings, debug interface, notices, and admin UI elements.
 - [test_connection.php](test_connection.php) provides the protected AJAX endpoint used by the site administration connection-test button. It validates the Moodle session, calls the FilPass login flow, and returns a safe JSON response with the token redacted.

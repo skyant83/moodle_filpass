@@ -26,6 +26,16 @@ defined('MOODLE_INTERNAL') || die();
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class admin_setting_password extends \admin_setting_configpasswordunmask {
+    /**
+     * Keeps the native credential field visible while preset actions control saving.
+     *
+     * @return void
+     */
+    public function __construct(...$args) {
+        parent::__construct(...$args);
+        $this->nosave = true;
+    }
+
     public function write_setting($data) {
         $oldvalue = $this->get_setting();
         $result = parent::write_setting($data);
@@ -40,7 +50,7 @@ class admin_setting_password extends \admin_setting_configpasswordunmask {
 
         try {
             // A direct edit intentionally returns the site to the legacy default connection.
-            delete_config('activepresetid', 'local_filpass');
+            unset_config('activepresetid', 'local_filpass');
             $event = \local_filpass\event\admin_settings_changed::create([
                 'userid' => $USER->id,
                 'context' => \context_system::instance(),

@@ -89,6 +89,157 @@ class preset_service {
     }
 
     /**
+     * Returns preset data for the site-administration selector.
+     *
+     * Credential values are only returned to callers that already require the
+     * site-configuration capability.
+     *
+     * @return array
+     */
+    public static function get_settings_preset_data(): array {
+        $presets = [];
+
+        foreach (self::get_presets() as $preset) {
+            $credentials = self::get_credentials((int) $preset->id);
+
+            if (!$credentials) {
+                continue;
+            }
+
+            $presets[] = (object) [
+                'id' => (int) $preset->id,
+                'name' => $preset->name,
+                'server' => $credentials->server,
+                'key' => $credentials->key,
+                'secret' => $credentials->secret,
+            ];
+        }
+
+        return $presets;
+    }
+
+    /**
+     * Returns the credentials currently used as the site-wide default.
+     *
+     * @return object
+     */
+    public static function get_default_credentials(): object {
+        $activepresetid = (int) get_config('local_filpass', 'activepresetid');
+        $credentials = self::get_credentials($activepresetid);
+
+        if ($credentials) {
+            return $credentials;
+        }
+
+        return (object) [
+            'server' => rtrim((string) get_config('local_filpass', 'api_server'), '/'),
+            'key' => (string) get_config('local_filpass', 'api_key'),
+            'secret' => (string) get_config('local_filpass', 'api_secret'),
+        ];
+    }
+
+    /**
+     * Keeps the native settings fields in sync with an active saved preset.
+     *
+     * @return void
+     */
+    public static function synchronize_default_credentials(): void {
+        $activepresetid = (int) get_config('local_filpass', 'activepresetid');
+        $credentials = self::get_credentials($activepresetid);
+
+        if (!$credentials) {
+            return;
+        }
+
+        set_config('api_server', $credentials->server, 'local_filpass');
+        set_config('api_key', $credentials->key, 'local_filpass');
+        set_config('api_secret', $credentials->secret, 'local_filpass');
+    }
+
+    /**
+     * Finds a saved preset with the supplied credentials.
+     *
+     * @param string $server
+     * @param string $apikey
+     * @param string $apisecret
+     * @return int
+     */
+    public static function find_matching_preset(
+        string $server,
+        string $apikey,
+        string $apisecret
+    ): int {
+        $server = rtrim($server, '/');
+
+        foreach (self::get_settings_preset_data() as $preset) {
+            if (
+                $preset->server === $server
+                && hash_equals($preset->key, $apikey)
+                && hash_equals($preset->secret, $apisecret)
+            ) {
+                return (int) $preset->id;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Applies credentials as the site-wide default and returns a matching preset ID.
+     *
+     * @param string $server
+     * @param string $apikey
+     * @param string $apisecret
+     * @return int
+     */
+    public static function apply_default_credentials(
+        string $server,
+        string $apikey,
+        string $apisecret
+    ): int {
+        $server = rtrim(clean_param($server, PARAM_URL), '/');
+        $apikey = trim($apikey);
+        $apisecret = trim($apisecret);
+
+        if ($server === '') {
+            throw new \moodle_exception('presetserverrequired', 'local_filpass');
+        }
+
+        if ($apikey === '' || $apisecret === '') {
+            throw new \moodle_exception('presetcredentialsrequired', 'local_filpass');
+        }
+
+        $presetid = self::find_matching_preset($server, $apikey, $apisecret);
+
+        set_config('api_server', $server, 'local_filpass');
+        set_config('api_key', $apikey, 'local_filpass');
+        set_config('api_secret', $apisecret, 'local_filpass');
+
+        if ($presetid) {
+            set_config('activepresetid', $presetid, 'local_filpass');
+        } else {
+            unset_config('activepresetid', 'local_filpass');
+        }
+
+        self::trigger_admin_settings_event();
+
+        return $presetid;
+    }
+
+    /**
+     * Clears the site-wide default connection.
+     *
+     * @return void
+     */
+    public static function clear_default_credentials(): void {
+        set_config('api_server', '', 'local_filpass');
+        set_config('api_key', '', 'local_filpass');
+        set_config('api_secret', '', 'local_filpass');
+        unset_config('activepresetid', 'local_filpass');
+        self::trigger_admin_settings_event();
+    }
+
+    /**
      * Creates or updates a saved preset without exposing existing credentials.
      *
      * @param object $data
@@ -167,6 +318,9 @@ class preset_service {
             return false;
         }
 
+        set_config('api_server', $credentials->server, 'local_filpass');
+        set_config('api_key', $credentials->key, 'local_filpass');
+        set_config('api_secret', $credentials->secret, 'local_filpass');
         set_config('activepresetid', $presetid, 'local_filpass');
         self::trigger_admin_settings_event();
 
@@ -174,7 +328,7 @@ class preset_service {
     }
 
     /**
-     * Indicates whether a preset can be removed without breaking active configuration.
+     * Indicates whether a preset can be removed without breaking a course override.
      *
      * @param int $presetid
      * @return bool
@@ -182,12 +336,13 @@ class preset_service {
     public static function can_delete_preset(int $presetid): bool {
         global $DB;
 
-        return $presetid !== (int) get_config('local_filpass', 'activepresetid')
+        return $presetid > 0
+            && $DB->record_exists('local_filpass_api_presets', ['id' => $presetid])
             && !$DB->record_exists('local_filpass_courses', ['presetid' => $presetid]);
     }
 
     /**
-     * Deletes an unused, inactive preset.
+     * Deletes an unused preset.
      *
      * @param int $presetid
      * @return bool
