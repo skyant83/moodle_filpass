@@ -13,6 +13,8 @@ This local Moodle plugin connects the custom certificate workflow to the FilPass
 - Generates the certificate PDF from the active custom certificate template and sends it to FilPass with recipient data.
 - Tracks each certificate upload attempt in the database, including recipient details, status, attempt count, last response, and last error.
 - Retries missing, pending, or failed certificate uploads through a scheduled task that runs every five minutes.
+- Lists pending and failed course certificate uploads so a manager can try an immediate manual upload.
+- Permanently stops automatic retries for an entry as soon as its manual upload is started, whether that attempt succeeds or fails.
 - Skips certificates issued to privileged users who can view all custom certificates, preventing admin/manager certificates from being uploaded.
 - Listens for custom certificate deletion events and removes the corresponding FilPass upload tracking record.
 - Emits dedicated Moodle events for upload start, successful upload, failed upload, admin settings changes, and course settings changes.
@@ -34,8 +36,10 @@ This local Moodle plugin connects the custom certificate workflow to the FilPass
 12. The upload record is marked as successful or failed based on the API response.
 13. Failed uploads are scheduled for retry with a retry delay.
 14. A scheduled task runs every five minutes and retries missing, pending, or failed uploads for enabled courses.
-15. If a custom certificate issue is deleted in Moodle, the plugin listens for the deletion event and removes the matching upload tracking record.
-16. Saving course-level or site-level settings also emits dedicated change events for auditability.
+15. A manager can use **Try manual upload** for a pending or failed entry; that upload runs immediately and disables future automatic retries for the entry.
+16. If the manual attempt fails, the entry remains available for another manual attempt but is excluded from scheduled retries.
+17. If a custom certificate issue is deleted in Moodle, the plugin listens for the deletion event and removes the matching upload tracking record.
+18. Saving course-level or site-level settings also emits dedicated change events for auditability.
 
 ## Architecture at a glance
 <pre>
@@ -92,8 +96,8 @@ local/
 - [classes/event/upload_failed_filpass.php](classes/event/upload_failed_filpass.php) defines the event raised when an upload fails.
 - [classes/event/admin_settings_changed.php](classes/event/admin_settings_changed.php) defines the event raised when site-level settings are updated.
 - [classes/event/course_settings_changed.php](classes/event/course_settings_changed.php) defines the event raised when course-level settings are updated.
-- [classes/service/upload_service.php](classes/service/upload_service.php) centralizes the certificate upload workflow used by both the event observer and the retry scheduled task. It creates upload records, generates PDFs, sends data to FilPass, records success or failure, schedules retries, skips privileged certificate recipients, and triggers upload lifecycle events.
-- [classes/task/retry_pending_uploads.php](classes/task/retry_pending_uploads.php) defines the scheduled task that checks issued certificates in FilPass-enabled courses and retries uploads that are missing, pending, or failed.
+- [classes/service/upload_service.php](classes/service/upload_service.php) centralizes the certificate upload workflow used by the event observer, retry task, and manual action. It creates upload records, generates PDFs, sends data to FilPass, records success or failure, manages per-entry automatic retry control, skips privileged certificate recipients, and triggers upload lifecycle events.
+- [classes/task/retry_pending_uploads.php](classes/task/retry_pending_uploads.php) defines the scheduled task that checks issued certificates in FilPass-enabled courses and retries eligible uploads that are missing, pending, or failed.
 - [classes/admin_setting_password.php](classes/admin_setting_password.php) defines the custom admin password setting used to store sensitive FilPass credentials while supporting change detection for settings events.
 - [classes/admin_setting_text.php](classes/admin_setting_text.php) defines the custom admin text setting used for FilPass configuration values while supporting change detection for settings events.
 - [classes/api_client.php](classes/api_client.php) contains the HTTP wrapper for typed authentication, token handling, batch lookup, and submission of certificate data and PDF files to FilPass.
@@ -105,7 +109,7 @@ local/
 - [lang/en/local_filpass.php](lang/en/local_filpass.php) contains the English language strings used throughout the plugin, including labels, settings descriptions, event names, and connection-test messages.
 - [edit_form.php](edit_form.php) defines the Moodle form used to configure the integration and the debug test fields.
 - [lib.php](lib.php) adds the course configuration link in navigation and injects a small notice on the certificate view page when FilPass is active for the course.
-- [manage_course.php](manage_course.php) handles the course-level administration UI, including saving course enablement and batch mappings to the plugin database table while retaining temporary compatibility with the older plugin-config keys.
+- [manage_course.php](manage_course.php) handles the course-level administration UI, including saving course enablement and batch mappings, listing pending and failed certificate entries, and running manual uploads that stop automatic retry for the selected entry.
 - [settings.php](settings.php) stores the FilPass base URL, API key, and API secret in site-wide configuration and emits a settings-change event when those values are saved. Includes a section to test login credentials.
 - [styles.css](styles.css) contains plugin-specific styling for the FilPass course settings, debug interface, notices, and admin UI elements.
 - [test_connection.php](test_connection.php) provides the protected AJAX endpoint used by the site administration connection-test button. It validates the Moodle session, calls the FilPass login flow, and returns a safe JSON response with the token redacted.
@@ -135,6 +139,7 @@ The plugin maintains two dedicated database tables for the FilPass workflow.
 - Generated filename
 - Upload status
 - Upload source
+- Whether automatic retry is enabled for the entry
 - Attempt count
 - Last attempt time
 - Next retry time
@@ -149,7 +154,9 @@ Upload records can move through the following statuses:
 - `failed`: the upload attempt failed and may be retried later.
 - `skipped`: the upload was intentionally skipped, such as when the certificate belongs to a privileged user who can view all certificates.
 
-The retry task runs every five minutes and processes issued certificates in FilPass-enabled courses when no successful upload record exists. It retries missing, pending, and failed records, but it does not retry successful or skipped records.
+The retry task runs every five minutes and processes issued certificates in FilPass-enabled courses when no successful upload record exists. It retries missing records and pending or failed records whose `autoretry` flag is enabled. It does not retry successful, skipped, or manually controlled records.
+
+The course management page lists pending and failed certificate entries. Selecting **Try manual upload** disables `autoretry` under the same per-issue lock used by the upload workflow, then immediately performs the normal PDF generation and FilPass request. A failed manual attempt keeps `status` as `failed` and `nextretry` as `0`, allowing another manual attempt without returning control to the scheduled task.
 
 ## Notes for developers
 - This plugin depends on the custom certificate module in Moodle and expects certificate issue events to be available.
@@ -160,6 +167,7 @@ The retry task runs every five minutes and processes issued certificates in FilP
 - Course-level FilPass enablement is now stored in `local_filpass_courses`. The older `course_{id}_enabled` and `course_{id}_batch_id` plugin configuration keys are retained temporarily for compatibility.
 - Certificate upload state is now tracked in `local_filpass_uploads`, with one row per custom certificate issue.
 - The observer and retry task share the same upload service so normal uploads and retry uploads follow the same code path.
+- Manual uploads use the same service and per-issue lock. The service re-checks `autoretry` after acquiring the lock so a task that selected a row just before a manual action cannot restart it later.
 - The retry task depends on Moodle cron. A five-minute task schedule will only be effective if Moodle cron runs frequently enough.
 - Certificates belonging to users with `mod/customcert:viewallcertificates` are marked as skipped to avoid uploading admin, manager, or teacher certificates to FilPass.
 - Deleting a custom certificate issue in Moodle removes the corresponding FilPass upload tracking record.
@@ -172,7 +180,7 @@ The plugin registers the following Moodle scheduled task:
 \local_filpass\task\retry_pending_uploads
 ```
 
-The task is configured to run every five minutes. It checks issued custom certificates in courses where FilPass is enabled and a batch ID is configured. For each matching certificate issue, it retries the upload only when the upload record is missing, pending, or failed.
+The task is configured to run every five minutes. It checks issued custom certificates in courses where FilPass is enabled and a batch ID is configured. For each matching certificate issue, it retries the upload only when the upload record is missing, or is pending/failed with automatic retry still enabled.
 
 The task processes a limited batch of records per run to avoid overloading cron. Failed uploads are retried with a backoff delay controlled by the upload service.
 
@@ -183,7 +191,7 @@ If a developer needs deeper visibility into the flow, they can temporarily uncom
 - [classes/api_client.php](classes/api_client.php)
 - [manage_course.php](manage_course.php)
 
-The retry flow can be inspected through the `local_filpass_uploads` table. Useful fields include `status`, `attempts`, `lastattempt`, `nextretry`, `timeuploaded`, `lastresponse`, and `lasterror`. These fields make it easier to distinguish between certificates that have been uploaded, skipped, failed, or are waiting for retry.
+The retry flow can be inspected through the `local_filpass_uploads` table. Useful fields include `status`, `source`, `autoretry`, `attempts`, `lastattempt`, `nextretry`, `timeuploaded`, `lastresponse`, and `lasterror`. These fields make it easier to distinguish between certificates that have been uploaded, skipped, failed, manually controlled, or are waiting for retry.
 
 ## Event reference
 

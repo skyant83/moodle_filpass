@@ -133,5 +133,25 @@ function xmldb_local_filpass_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026070314, 'local', 'filpass');
     }
 
+    if ($oldversion < 2026082600) {
+        $table = new \xmldb_table('local_filpass_uploads');
+        $field = new \xmldb_field(
+            'autoretry',
+            XMLDB_TYPE_INTEGER,
+            '1',
+            null,
+            XMLDB_NOTNULL,
+            null,
+            '1',
+            'source'
+        );
+
+        if ($dbman->table_exists($table) && !$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026082600, 'local', 'filpass');
+    }
+
     return true;
 }

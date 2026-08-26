@@ -48,6 +48,72 @@ $PAGE->set_url(new moodle_url('/local/filpass/manage_course.php', ['id' => $cour
 $PAGE->set_title(get_string('course_settings_title', 'local_filpass'));
 $PAGE->set_heading($course->fullname);
 
+$manualissueid = optional_param('manualupload', 0, PARAM_INT);
+
+if ($manualissueid) {
+	require_sesskey();
+
+	$issuebelongs = $DB->record_exists_sql(
+		"SELECT 1
+		   FROM {customcert_issues} ci
+		   JOIN {customcert} cc ON cc.id = ci.customcertid
+		  WHERE ci.id = :issueid
+		    AND cc.course = :courseid",
+		[
+			'issueid' => $manualissueid,
+			'courseid' => $courseid,
+		]
+	);
+
+	if (!$issuebelongs) {
+		throw new moodle_exception('invalidmanualupload', 'local_filpass');
+	}
+
+	$uploaded = \local_filpass\service\upload_service::upload_issue(
+		$manualissueid,
+		\local_filpass\service\upload_service::SOURCE_MANUAL
+	);
+
+	$uploadrecord = $DB->get_record(
+		'local_filpass_uploads',
+		['issueid' => $manualissueid],
+		'*',
+		IGNORE_MISSING
+	);
+
+	$redirecturl = new moodle_url('/local/filpass/manage_course.php', ['id' => $courseid]);
+
+	if ($uploaded && $uploadrecord && $uploadrecord->status === \local_filpass\service\upload_service::STATUS_SUCCESS) {
+		redirect(
+			$redirecturl,
+			get_string('manualuploadsuccess', 'local_filpass'),
+			null,
+			\core\output\notification::NOTIFY_SUCCESS
+		);
+	}
+
+	if ($uploadrecord && empty($uploadrecord->autoretry)) {
+		$error = trim((string) $uploadrecord->lasterror);
+		if ($error === '') {
+			$error = get_string('manualuploadunknownerror', 'local_filpass');
+		}
+
+		redirect(
+			$redirecturl,
+			get_string('manualuploadfailed', 'local_filpass', $error),
+			null,
+			\core\output\notification::NOTIFY_ERROR
+		);
+	}
+
+	redirect(
+		$redirecturl,
+		get_string('manualuploadnotstarted', 'local_filpass'),
+		null,
+		\core\output\notification::NOTIFY_WARNING
+	);
+}
+
 // The course page retrieves the available FilPass batches up front so the form can present
 // a valid selection list without requiring the admin to enter batch IDs manually.
 $client = new \local_filpass\api_client();
@@ -223,4 +289,136 @@ if ($form->is_cancelled()) {
 /** @var core_renderer $OUTPUT */
 echo $OUTPUT->header();
 $form->display();
+
+$uploadpage = optional_param('uploadpage', 0, PARAM_INT);
+$perpage = 25;
+
+$uploadfromsql = "
+      FROM {customcert_issues} ci
+      JOIN {customcert} cc
+        ON cc.id = ci.customcertid
+      JOIN {user} u
+        ON u.id = ci.userid
+ LEFT JOIN {local_filpass_uploads} fu
+        ON fu.issueid = ci.id
+     WHERE cc.course = :uploadcourseid
+       AND (
+            fu.id IS NULL
+            OR fu.status IN (:pendingstatus, :failedstatus)
+       )
+";
+
+$uploadparams = [
+	'uploadcourseid' => $courseid,
+	'pendingstatus' => \local_filpass\service\upload_service::STATUS_PENDING,
+	'failedstatus' => \local_filpass\service\upload_service::STATUS_FAILED,
+];
+
+$uploadcount = $DB->count_records_sql('SELECT COUNT(1) ' . $uploadfromsql, $uploadparams);
+
+echo $OUTPUT->heading(get_string('pendinguploadstitle', 'local_filpass'), 3);
+echo html_writer::tag('p', get_string('pendinguploadsdesc', 'local_filpass'));
+
+if ($uploadcount === 0) {
+	echo $OUTPUT->notification(
+		get_string('nopendinguploads', 'local_filpass'),
+		\core\output\notification::NOTIFY_INFO
+	);
+} else {
+	$uploadrecords = $DB->get_records_sql(
+		'SELECT ci.id AS issueid,
+		        cc.name AS certificatename,
+		        u.firstname,
+		        u.lastname,
+		        u.email,
+		        fu.id AS uploadid,
+		        fu.status,
+		        fu.autoretry,
+		        fu.attempts,
+		        fu.lastattempt,
+		        fu.nextretry,
+		        fu.lasterror
+		   ' . $uploadfromsql . '
+		 ORDER BY ci.timecreated DESC',
+		$uploadparams,
+		$uploadpage * $perpage,
+		$perpage
+	);
+
+	$table = new html_table();
+	$table->attributes['class'] = 'generaltable local-filpass-pending-uploads';
+	$table->head = [
+		get_string('recipient', 'local_filpass'),
+		get_string('certificate', 'local_filpass'),
+		get_string('uploadstatus', 'local_filpass'),
+		get_string('attempts', 'local_filpass'),
+		get_string('retrymode', 'local_filpass'),
+		get_string('lasterror', 'local_filpass'),
+		get_string('actions', 'local_filpass'),
+	];
+
+	$integrationready = !empty($current_enabled) && !empty($current_batch);
+
+	foreach ($uploadrecords as $uploadrecord) {
+		$status = empty($uploadrecord->uploadid)
+			? get_string('statusnotattempted', 'local_filpass')
+			: get_string('status' . $uploadrecord->status, 'local_filpass');
+
+		if (
+			!empty($uploadrecord->uploadid)
+			&& !empty($uploadrecord->autoretry)
+			&& (int) $uploadrecord->attempts >= \local_filpass\service\upload_service::MAX_AUTO_ATTEMPTS
+		) {
+			$retrymode = get_string('autoretrylimitreached', 'local_filpass');
+		} else if (empty($uploadrecord->uploadid) || !empty($uploadrecord->autoretry)) {
+			if (!empty($uploadrecord->nextretry)) {
+				$retrymode = get_string(
+					'autoretryscheduled',
+					'local_filpass',
+					userdate((int) $uploadrecord->nextretry)
+				);
+			} else {
+				$retrymode = get_string('autoretryenabled', 'local_filpass');
+			}
+		} else {
+			$retrymode = get_string('autoretrystopped', 'local_filpass');
+		}
+
+		$action = get_string('integrationnotready', 'local_filpass');
+		if ($integrationready) {
+			$actionurl = new moodle_url('/local/filpass/manage_course.php', [
+				'id' => $courseid,
+				'manualupload' => $uploadrecord->issueid,
+				'sesskey' => sesskey(),
+			]);
+			$button = new single_button(
+				$actionurl,
+				get_string('trymanualupload', 'local_filpass'),
+				'post'
+			);
+			$button->add_confirm_action(get_string('manualuploadconfirm', 'local_filpass'));
+			$action = $OUTPUT->render($button);
+		}
+
+		$table->data[] = [
+			s(fullname($uploadrecord)) . html_writer::empty_tag('br') . s($uploadrecord->email),
+			s($uploadrecord->certificatename),
+			s($status),
+			(int) ($uploadrecord->attempts ?? 0),
+			s($retrymode),
+			s((string) ($uploadrecord->lasterror ?? '')),
+			$action,
+		];
+	}
+
+	echo html_writer::table($table);
+	echo $OUTPUT->paging_bar(
+		$uploadcount,
+		$uploadpage,
+		$perpage,
+		new moodle_url('/local/filpass/manage_course.php', ['id' => $courseid]),
+		'uploadpage'
+	);
+}
+
 echo $OUTPUT->footer();

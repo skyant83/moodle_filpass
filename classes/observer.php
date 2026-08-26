@@ -48,7 +48,7 @@ class observer {
 
         return \local_filpass\service\upload_service::upload_issue(
             (int) $eventdata['objectid'],
-            'observer'
+            \local_filpass\service\upload_service::SOURCE_OBSERVER
         );
     }
 

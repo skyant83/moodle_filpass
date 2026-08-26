@@ -34,6 +34,12 @@ class upload_service {
     public const STATUS_FAILED = 'failed';
     public const STATUS_SKIPPED = 'skipped';
 
+    public const SOURCE_OBSERVER = 'observer';
+    public const SOURCE_SCHEDULED_TASK = 'scheduled_task';
+    public const SOURCE_MANUAL = 'manual';
+
+    public const MAX_AUTO_ATTEMPTS = 10;
+
     /**
      * Uploads a customcert issue to FilPass and records the result.
      *
@@ -41,9 +47,10 @@ class upload_service {
      * @param string $source
      * @return bool
      */
-    public static function upload_issue(int $issueid, string $source = 'observer'): bool {
+    public static function upload_issue(int $issueid, string $source = self::SOURCE_OBSERVER): bool {
         $lockfactory = \core\lock\lock_config::get_lock_factory('local_filpass');
-        $lock = $lockfactory->get_lock('upload_issue_' . $issueid, 0);
+        $locktimeout = $source === self::SOURCE_MANUAL ? 10 : 0;
+        $lock = $lockfactory->get_lock('upload_issue_' . $issueid, $locktimeout);
 
         if (!$lock) {
             debugging(
@@ -118,6 +125,20 @@ class upload_service {
             $user,
             $source
         );
+
+        if ($source === self::SOURCE_MANUAL) {
+            // A manual attempt transfers control of this entry to the manager. Persist this
+            // before contacting FilPass so a failed manual request is never picked up by cron.
+            $uploadrecord->autoretry = 0;
+            $uploadrecord->nextretry = 0;
+            $uploadrecord->source = self::SOURCE_MANUAL;
+            $uploadrecord->timemodified = $now;
+            $DB->update_record('local_filpass_uploads', $uploadrecord);
+        } else if (empty($uploadrecord->autoretry)) {
+            // Re-check inside the issue lock because cron may have selected the row immediately
+            // before a manager disabled its automatic retries with a manual attempt.
+            return false;
+        }
 
         if ($uploadrecord->status === self::STATUS_SUCCESS) {
             return true;
@@ -292,6 +313,7 @@ class upload_service {
             'filename' => '',
             'status' => self::STATUS_PENDING,
             'source' => clean_param($source, PARAM_ALPHANUMEXT),
+            'autoretry' => 1,
             'attempts' => 0,
             'lastattempt' => 0,
             'nextretry' => 0,
@@ -365,7 +387,7 @@ class upload_service {
         $delayminutes = min(60, 5 * (2 ** min($attempts - 1, 4)));
 
         $record->status = self::STATUS_FAILED;
-        $record->nextretry = $now + ($delayminutes * 60);
+        $record->nextretry = empty($record->autoretry) ? 0 : $now + ($delayminutes * 60);
         $record->lasterror = $error;
         $record->lastresponse = self::encode_response($response);
         $record->timemodified = $now;

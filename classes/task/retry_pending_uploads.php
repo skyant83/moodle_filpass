@@ -45,7 +45,7 @@ class retry_pending_uploads extends \core\task\scheduled_task {
         global $DB;
 
         $now = time();
-        $maxattempts = 10;
+        $maxattempts = \local_filpass\service\upload_service::MAX_AUTO_ATTEMPTS;
         $batchlimit = 25;
 
         $sql = "
@@ -61,7 +61,10 @@ class retry_pending_uploads extends \core\task\scheduled_task {
                    ON fu.issueid = ci.id
              WHERE (
                     fu.id IS NULL
-                    OR fu.status IN (:pendingstatus, :failedstatus)
+                    OR (
+                        fu.autoretry = 1
+                        AND fu.status IN (:pendingstatus, :failedstatus)
+                    )
                    )
                AND (
                     fu.id IS NULL
@@ -88,7 +91,7 @@ class retry_pending_uploads extends \core\task\scheduled_task {
             try {
                 \local_filpass\service\upload_service::upload_issue(
                     (int) $record->issueid,
-                    'scheduled_task'
+                    \local_filpass\service\upload_service::SOURCE_SCHEDULED_TASK
                 );
             } catch (\Throwable $exception) {
                 mtrace('FilPass retry failed for issue ' . $record->issueid . ': ' . $exception->getMessage());
